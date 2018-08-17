@@ -5,6 +5,9 @@
 #include "ebsynth.h"
 #include "patchmatch_gpu.h"
 
+#include <fstream>
+
+
 #define FOR(A,X,Y) for(int Y=0;Y<A.height();Y++) for(int X=0;X<A.width();X++)
 
 A2V2i nnfInitRandom(const V2i& targetSize,
@@ -407,7 +410,8 @@ void runEbsynth(int    ebsynthBackend,
                 int*   numSearchVoteItersPerLevel,
                 int*   numPatchMatchItersPerLevel,
                 int*   stopThresholdPerLevel,
-                void*  outputData)
+                void*  outputData,
+				void*  finalNNF)
 {
   const int levelCount = numPyramidLevels;
 
@@ -706,7 +710,14 @@ void runEbsynth(int    ebsynthBackend,
       }
     }
 
-    if (level==levelCount-1) { copy(&outputData,pyramid[pyramid.size()-1].targetStyle); }
+    if (level==levelCount-1) 
+	{ 
+		copy(&outputData,pyramid[pyramid.size()-1].targetStyle); 
+		if(finalNNF != NULL)
+		{
+			copy(&finalNNF,  pyramid[pyramid.size()-1].NNF);	
+		}
+	}
 
     pyramid[level].sourceStyle.destroy();
     pyramid[level].sourceGuide.destroy();
@@ -746,10 +757,11 @@ EBSYNTH_API void ebsynthRun(int    ebsynthBackend,
                             int*   numSearchVoteItersPerLevel,
                             int*   numPatchMatchItersPerLevel,
                             int*   stopThresholdPerLevel,
-                            void*  outputData
+                            void*  outputData,
+							void*  finalNNF
                             )
 {
-  void (*const dispatchEbsynth[EBSYNTH_MAX_GUIDE_CHANNELS][EBSYNTH_MAX_STYLE_CHANNELS])(int,int,int,int,int,void*,void*,int,int,void*,void*,float*,float*,float,int,int,int,int*,int*,int*,void*) =
+  void (*const dispatchEbsynth[EBSYNTH_MAX_GUIDE_CHANNELS][EBSYNTH_MAX_STYLE_CHANNELS])(int,int,int,int,int,void*,void*,int,int,void*,void*,float*,float*,float,int,int,int,int*,int*,int*,void*, void*) =
   {
     { runEbsynth<1, 1>, runEbsynth<2, 1>, runEbsynth<3, 1>, runEbsynth<4, 1>, runEbsynth<5, 1>, runEbsynth<6, 1>, runEbsynth<7, 1>, runEbsynth<8, 1> },
     { runEbsynth<1, 2>, runEbsynth<2, 2>, runEbsynth<3, 2>, runEbsynth<4, 2>, runEbsynth<5, 2>, runEbsynth<6, 2>, runEbsynth<7, 2>, runEbsynth<8, 2> },
@@ -800,7 +812,8 @@ EBSYNTH_API void ebsynthRun(int    ebsynthBackend,
                                                             numSearchVoteItersPerLevel,
                                                             numPatchMatchItersPerLevel,
                                                             stopThresholdPerLevel,
-                                                            outputData);
+                                                            outputData,
+															finalNNF);
   }
 }
 
@@ -1236,6 +1249,8 @@ int main(int argc,char** argv)
   }
 
   std::vector<unsigned char> output(targetWidth*targetHeight*numStyleChannelsTotal);
+  std::vector<int>           finalNNF(targetWidth*targetHeight*2);
+
 
   printf("uniformity: %.0f\n",uniformityWeight);
   printf("patchsize: %d\n",patchSize);
@@ -1266,7 +1281,18 @@ int main(int argc,char** argv)
              numSearchVoteItersPerLevel.data(),
              numPatchMatchItersPerLevel.data(),
              stopThresholdPerLevel.data(),
-             output.data());
+             output.data(),
+			 finalNNF.data()); // (col, row)
+
+  std::ofstream ofs((outputFileName + "_NNF.txt").c_str());
+  ofs << patchSize << " ";
+  ofs << targetWidth << " ";
+  ofs << targetHeight << " ";
+  for (int i = 0; i < finalNNF.size(); i++)
+  {
+	  ofs << finalNNF[i] << " ";
+  }
+  ofs.close();
 
   stbi_write_png(outputFileName.c_str(),targetWidth,targetHeight,numStyleChannelsTotal,output.data(),numStyleChannelsTotal*targetWidth);
 

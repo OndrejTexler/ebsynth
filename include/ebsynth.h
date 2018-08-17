@@ -61,8 +61,9 @@ void ebsynthRun(int    ebsynthBackend,             // use BACKEND_CUDA for maxim
 
                 int*   stopThresholdPerLevel,      // stop improving pixel when its change since last iteration falls under this threshold
 
-                void*  outputData                  // (width * height * numStyleChannels) bytes, scan-line order
-                );
+                void*  outputData,                 // (width * height * numStyleChannels) bytes, scan-line order
+                void*  finalNNF					   // Last NNF
+				);
 
 #ifdef __cplusplus
 }
