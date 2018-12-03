@@ -30,10 +30,11 @@ void ebsynthRun(int    ebsynthBackend,
                 int*   numSearchVoteItersPerLevel,
                 int*   numPatchMatchItersPerLevel,
                 int*   stopThresholdPerLevel,
+                int    extraPass3x3,
                 void*  outputNnfData,
                 void*  outputImageData)
 {
-  void (*backendDispatch)(int,int,int,int,void*,void*,int,int,void*,void*,float*,float*,float,int,int,int,int*,int*,int*,void*,void*) = 0;
+  void (*backendDispatch)(int,int,int,int,void*,void*,int,int,void*,void*,float*,float*,float,int,int,int,int*,int*,int*,int,void*,void*) = 0;
   
   if      (ebsynthBackend==EBSYNTH_BACKEND_CPU ) { backendDispatch = ebsynthRunCpu;  }
   else if (ebsynthBackend==EBSYNTH_BACKEND_CUDA) { backendDispatch = ebsynthRunCuda; }
@@ -60,6 +61,7 @@ void ebsynthRun(int    ebsynthBackend,
                     numSearchVoteItersPerLevel,
                     numPatchMatchItersPerLevel,
                     stopThresholdPerLevel,
+                    extraPass3x3,
                     outputNnfData,
                     outputImageData);
   }
@@ -256,13 +258,14 @@ int main(int argc,char** argv)
     printf("  -searchvoteiters <number>\n");
     printf("  -patchmatchiters <number>\n");
     printf("  -stopthreshold <value>\n");
+    printf("  -extrapass3x3\n");
     printf("  -backend [cpu|cuda]\n");
     printf("\n");
     return 1;
   }
 
   std::string styleFileName;
-  float       styleWeight = NAN;
+  float       styleWeight = -1;
   std::string outputFileName = "output.png";
 
   struct Guide
@@ -290,6 +293,7 @@ int main(int argc,char** argv)
   int numSearchVoteIters = 6;
   int numPatchMatchIters = 4;
   int stopThreshold = 5;
+  int extraPass3x3 = 0;
   int backend = ebsynthBackendAvailable(EBSYNTH_BACKEND_CUDA) ? EBSYNTH_BACKEND_CUDA : EBSYNTH_BACKEND_CPU;
 
   {
@@ -308,7 +312,7 @@ int main(int argc,char** argv)
 
       if      (tryToParseStringArg(args,&argi,"-style",&styleFileName,&fail))
       {
-        styleWeight = NAN;
+        styleWeight = -1;
         precedingStyleOrGuideWeight = &styleWeight;
         argi++;
       }
@@ -317,7 +321,7 @@ int main(int argc,char** argv)
         Guide guide;
         guide.sourceFileName = guidePair.first;
         guide.targetFileName = guidePair.second;
-        guide.weight = NAN;
+        guide.weight = -1;
         guides.push_back(guide);
         precedingStyleOrGuideWeight = &guides[guides.size()-1].weight;
         argi++;
@@ -328,7 +332,11 @@ int main(int argc,char** argv)
       }
       else if (tryToParseFloatArg(args,&argi,"-weight",&weight,&fail))
       {
-        if (precedingStyleOrGuideWeight!=0) { *precedingStyleOrGuideWeight = weight; }
+        if (precedingStyleOrGuideWeight!=0)
+        {
+          if (weight>=0) { *precedingStyleOrGuideWeight = weight; }
+          else { printf("error: weights must be non-negaitve!\n"); return 1; }
+        }
         else { printf("error: at least one -style or -guide option must precede the -weight option!\n"); return 1; }
         argi++;
       }
@@ -367,6 +375,11 @@ int main(int argc,char** argv)
 
         if (!ebsynthBackendAvailable(backend)) { printf("error: the %s backend is not available!\n",backendToString(backend).c_str()); return 1; }
 
+        argi++;
+      }
+      else if (argi<args.size() && args[argi]=="-extrapass3x3")
+      {
+        extraPass3x3 = 1;
         argi++;
       }
       else
@@ -458,10 +471,10 @@ int main(int argc,char** argv)
   }
 
   std::vector<float> styleWeights(numStyleChannelsTotal);
-  if (isnan(styleWeight)) { styleWeight = 1.0f; }
+  if (styleWeight<0) { styleWeight = 1.0f; }
   for(int i=0;i<numStyleChannelsTotal;i++) { styleWeights[i] = styleWeight / float(numStyleChannelsTotal); }
 
-  for(int i=0;i<numGuides;i++) { if (isnan(guides[i].weight)) { guides[i].weight = 1.0f/float(numGuides); } }
+  for(int i=0;i<numGuides;i++) { if (guides[i].weight<0) { guides[i].weight = 1.0f/float(numGuides); } }
 
   std::vector<float> guideWeights(numGuideChannelsTotal);
   {
@@ -510,6 +523,7 @@ int main(int argc,char** argv)
   printf("searchvoteiters: %d\n",numSearchVoteIters);
   printf("patchmatchiters: %d\n",numPatchMatchIters);
   printf("stopthreshold: %d\n",stopThreshold);
+  printf("extrapass3x3: %s\n",extraPass3x3!=0?"yes":"no");
   printf("backend: %s\n",backendToString(backend).c_str());
 
   ebsynthRun(backend,
@@ -532,6 +546,7 @@ int main(int argc,char** argv)
              numSearchVoteItersPerLevel.data(),
              numPatchMatchItersPerLevel.data(),
              stopThresholdPerLevel.data(),
+             extraPass3x3,
              NULL,
              output.data());
 
