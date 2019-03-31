@@ -8,6 +8,7 @@
 
 #include <cstdio>
 #include <cmath>
+#include <fstream>
 
 EBSYNTH_API
 void ebsynthRun(int    ebsynthBackend,
@@ -260,6 +261,7 @@ int main(int argc,char** argv)
     printf("  -stopthreshold <value>\n");
     printf("  -extrapass3x3\n");
     printf("  -styleaux <styleaux.png>\n");
+	printf("  -outnnf <outnnf.txt>\n");
     printf("  -backend [cpu|cuda]\n");
     printf("\n");
     return 1;
@@ -296,6 +298,7 @@ int main(int argc,char** argv)
   int numPatchMatchIters = 4;
   int stopThreshold = 5;
   int extraPass3x3 = 0;
+  std::string outNnfFileName = "";
   int backend = ebsynthBackendAvailable(EBSYNTH_BACKEND_CUDA) ? EBSYNTH_BACKEND_CUDA : EBSYNTH_BACKEND_CPU;
 
   {
@@ -371,6 +374,7 @@ int main(int argc,char** argv)
       }
       else if (tryToParseStringArg(args,&argi,"-backend",&backendName,&fail))
       {
+		std::transform(backendName.begin(), backendName.end(), backendName.begin(), ::tolower);
         if      (backendName=="cpu" ) { backend = EBSYNTH_BACKEND_CPU; }
         else if (backendName=="cuda") { backend = EBSYNTH_BACKEND_CUDA; }
         else { printf("error: unrecognized backend '%s'\n",backendName.c_str()); return 1; }
@@ -384,6 +388,9 @@ int main(int argc,char** argv)
         extraPass3x3 = 1;
         argi++;
       }else if (tryToParseStringArg(args, &argi, "-styleaux", &styleAuxFileName, &fail))
+	  {
+		  argi++;
+	  }else if (tryToParseStringArg(args, &argi, "-outnnf", &outNnfFileName, &fail))
 	  {
 		  argi++;
 	  }
@@ -557,6 +564,7 @@ int main(int argc,char** argv)
   printf("styleChannels: %d\n", numStyleChannelsTotal);
   printf("styleAuxChannels: %d\n", numStyleAuxChannelsTotal);
 
+  std::vector<int> finalNNF(outNnfFileName.empty() ? 0 : targetWidth*targetHeight * 2);
 
   ebsynthRun(backend,
 			 numStyleWithAuxChannels,
@@ -579,7 +587,7 @@ int main(int argc,char** argv)
              numPatchMatchItersPerLevel.data(),
              stopThresholdPerLevel.data(),
              extraPass3x3,
-             NULL,
+			 outNnfFileName.empty() ? NULL : finalNNF.data(), // col, row
              output.data());
 
   if(numStyleAuxChannelsTotal > 0) // save without styleAux channels
@@ -597,6 +605,17 @@ int main(int argc,char** argv)
   else
   {
     stbi_write_png(outputFileName.c_str(), targetWidth, targetHeight, numStyleChannelsTotal, output.data(), numStyleChannelsTotal*targetWidth);
+  }
+
+  if(!outNnfFileName.empty())
+  {
+	std::ofstream ofs(outNnfFileName, std::ofstream::out);
+    for (int finalNNFIndex = 0; finalNNFIndex < finalNNF.size(); finalNNFIndex += 2)
+	{
+	  ofs << finalNNF[finalNNFIndex + 1] << " " << finalNNF[finalNNFIndex] << " ";
+	}
+	ofs.close();
+	printf("final nnf was written to %s\n", outNnfFileName.c_str());
   }
   
   printf("result was written to %s\n",outputFileName.c_str());
