@@ -259,6 +259,7 @@ int main(int argc,char** argv)
     printf("  -patchmatchiters <number>\n");
     printf("  -stopthreshold <value>\n");
     printf("  -extrapass3x3\n");
+    printf("  -styleaux <styleaux.png>\n");
     printf("  -backend [cpu|cuda]\n");
     printf("\n");
     return 1;
