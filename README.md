@@ -34,6 +34,7 @@ ebsynth -style <style.png> -guide <source.png> <target.png> -output <output.png>
 -patchmatchiters <number>
 -extrapass3x3
 -backend [cpu|cuda]
+-outnnf <output.nnf>
 ```
 
 ## Download
